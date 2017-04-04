@@ -1,6 +1,8 @@
 // Abychom nemuseli v programu pouzivat cisla PINu, vytvorime si nekolik
 // sovnich definic. Bude se nam tak lepe pracovat s PINy a z nazvu definice
 // rychle zjistime, co je k PINu pripojene.
+#define ECHOPIN     2
+#define TRIGPIN     3
 #define PIN_IN1     4
 #define PIN_IN2     5
 #define PIN_IN3     6
@@ -18,6 +20,10 @@ int smer;
 void setup() {
   // Zahajime seriovou komunikaci rychlosti 9600
   Serial.begin(9600);
+
+  // Nastaveni PINu pro HC-SR04
+  pinMode(ECHOPIN, INPUT);
+  pinMode(TRIGPIN, OUTPUT);
 
   // Vsechny PINy nastavime do rezimu zapisovani. Nebudeme z nich nic cist,
   // ale naopak my jim budeme rikat, jaka hodnota na nich ma byt nastavena.
@@ -46,6 +52,27 @@ void setup() {
 }
 
 void loop() {
+
+  // Vysle impuls
+  digitalWrite(TRIGPIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIGPIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIGPIN, LOW);
+
+  // Spocita vzdalenost v cm
+  float vzdalenost = pulseIn(ECHOPIN, HIGH);
+  vzdalenost = vzdalenost * 0.017315f;
+  // Serial.print(vzdalenost);
+  // Serial.println("cm");
+
+  // Pokud je vzdalenost mala, napise Stop! a vrati se zpet na zacatek funkce
+  // loop()
+  if (vzdalenost < 5) {
+    Serial.println("Stop!");
+    delay(1000);
+    return;
+  }
 
   // Do promenne "pocet" se ulozi pocet znaku, ktere cekaji na seriove lince.
   // Pokud promenna "pocet" bude vetsi nez 0 (tj. na seriove lince ceka alespon
