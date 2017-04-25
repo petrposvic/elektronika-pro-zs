@@ -1,6 +1,10 @@
+#include <SoftwareSerial.h>
+
 // Abychom nemuseli v programu pouzivat cisla PINu, vytvorime si nekolik
-// sovnich definic. Bude se nam tak lepe pracovat s PINy a z nazvu definice
+// slovnich definic. Bude se nam tak lepe pracovat s PINy a z nazvu definice
 // rychle zjistime, co je k PINu pripojene.
+#define PIN_BT_RX   2
+#define PIN_BT_TX   3
 #define PIN_IN1     4
 #define PIN_IN2     5
 #define PIN_IN3     6
@@ -8,16 +12,23 @@
 #define PIN_MOTOR_A 10 // PWM
 #define PIN_MOTOR_B 11 // PWM
 
-// Tato promenna bude obsah smer otaceni motoru. Pokud bude 0, budou se
-// motory otacet po smeru hodinovych rucicek. Pokud bude 1, budou se otacet
-// proti smeru hodinovych rucicek. Hodnota teto promenne smer nezmeni, ale
-// pokud ji nastavime na odpovidajici hodnotu vzdy, kdyz zmenime smer motoru,
-// budeme vzdy vedet, jakym smerem se motory otaceji.
-int smer;
+// Na PIN 2 a 3 je pripojeny bluetooth modul. Tyto dva PINy budou slouzit
+// pro seriovou komunikaci
+SoftwareSerial Bluetooth = SoftwareSerial(PIN_BT_RX, PIN_BT_TX);
+
+bool zpet = false;
+long last = 0;
 
 void setup() {
-  // Zahajime seriovou komunikaci rychlosti 9600
+  // Zahajime seriovou komunikaci s pocitacem (USB) rychlosti 9600
   Serial.begin(9600);
+
+  // Zahajime seriovou komunikaci s bluetooth modulem rychlosti 19200. Je potreba
+  // vedet, jakou rychlosti komunikuje bluetooth modul. Vetsinou lze bluetooth
+  // modul nastavit tak, aby komunikoval ruznou rychlosti. Jakou rychlost ma modul
+  // od vyroby, jake rychlosti podporuje a jak je nastavit lze zjistit u
+  // vyrobce modulu.
+  Bluetooth.begin(19200);
 
   // Vsechny PINy nastavime do rezimu zapisovani. Nebudeme z nich nic cist,
   // ale naopak my jim budeme rikat, jaka hodnota na nich ma byt nastavena.
@@ -32,154 +43,89 @@ void setup() {
   digitalWrite(PIN_MOTOR_A, LOW);
   digitalWrite(PIN_MOTOR_B, LOW);
 
-  // Motor A se bude tocit po smeru hodinovych rucicek
-  digitalWrite(PIN_IN1, HIGH); 
-  digitalWrite(PIN_IN2, LOW);
-  // Motor B se bude tocit po smeru hodinovych rucicek
-  digitalWrite(PIN_IN3, HIGH);
-  digitalWrite(PIN_IN4, LOW);
-  // Protoze jsme v predchozich 4 prikazech nastavili, aby se oba motory
-  // tocily po smeru hodinovych rucicek, nastavime promennou "smer" na 0.
-  // Kdyz pak budeme nekdy chtit zjistit, jakym smerem se motory toci,
-  // zjistime to podle hodnoty ulozene v promenne "smer".
-  smer = 0;
+  // Motor A se bude tocit proti smeru hodinovych rucicek
+  digitalWrite(PIN_IN1, LOW); 
+  digitalWrite(PIN_IN2, HIGH);
+  // Motor B se bude tocit proti smeru hodinovych rucicek
+  digitalWrite(PIN_IN3, LOW);
+  digitalWrite(PIN_IN4, HIGH);
 }
 
 void loop() {
 
-  // Do promenne "pocet" se ulozi pocet znaku, ktere cekaji na seriove lince.
-  // Pokud promenna "pocet" bude vetsi nez 0 (tj. na seriove lince ceka alespon
-  // jeden znak, provedou se nasledujici prikazy.
-  int pocet = Serial.available();
-  if (pocet > 0) {
+  // Vice jak vterinu neprisla data z bluetooth. Asi doslo ke ztrate spojeni.
+  // Pro jistotu vypnout oba motory.
+  if ((millis() - last) > 1000) {
+    analogWrite(PIN_MOTOR_A, 0);
+    analogWrite(PIN_MOTOR_B, 0);
+  }
+
+  // Bluetooth.available() vraci pocet znaku, ktere cekaji na seriove lince. Pokud
+  // je pocet vetsi nez 0, podminka je splnena.
+  if (Bluetooth.available()) {
 
     // Do promenne "ch" nacti nasledujici znak, ktery prisel po seriove lince.
-    // Predchozi prikaz Serial.available() ulozil
-    char znak = Serial.read();
+    char znak = Bluetooth.read();
+
+    // To, co prislo z bluetooth, vypiseme na serial monitor
+    // Serial.print(znak);
+
+    // Ulozime si cas precteni dat z bluetooth
+    last = millis();
 
     // Ted vime, ze v promenne "znak" je nejaky znak, ktery prisel po seriove
-    // lince (priradil nam ho tam prikaz Serial.read()). Dokud do promenne "znak"
+    // lince (priradil nam ho tam prikaz Bluetooth.read()). Dokud do promenne "znak"
     // nepriradime jinou hodnotu, nezmeni se. V nasledujich nekolika radcich
     // testujeme, jaka hodnota je v promenne "znak". Pouziva se konstrukce "if",
     // dvojite == (jednoduche = prirazuje, dvojite == testuje) a jednoduche
     // uvozovky '.
 
-    if (znak == 'A') {
-      // Nastavit na PIN_MOTOR_A (D10) 255 (tj. 5V) => bude se točit rychle.
-      // Stejne tak bychom mohli pouzit prikaz
-      //     analogWrite(10, 255);
-      // protoze v definici PIN_MOTOR_A je ulozeno cislo 10. Je lepsi pouzivat
-      // definice, protoze jeji nazev nam casto napovi, k cemu je dany PIN
-      // pripojeny.
-      analogWrite(PIN_MOTOR_A, 255);
-    }
+    if (znak == 'F') {
+      Serial.println("Vpred");
+      analogWrite(PIN_MOTOR_A, 80);
+      analogWrite(PIN_MOTOR_B, 80);
+    } else
 
-    if (znak == 'a') {
-      // Nastavit na PIN_MOTOR_A (D10) 0 (tj. 0V) => nebude se točit
+    if (znak == 'G') {
+      Serial.println("Vlevo");
       analogWrite(PIN_MOTOR_A, 0);
-    }
+      analogWrite(PIN_MOTOR_B, 150);
+    } else
+
+    if (znak == 'I') {
+      Serial.println("Vpravo");
+      analogWrite(PIN_MOTOR_A, 150);
+      analogWrite(PIN_MOTOR_B, 0);
+    } else
 
     if (znak == 'B') {
-      // Nastavit na PIN_MOTOR_B (D11) 255 (tj. 5V) => bude se točit rychle
-      analogWrite(PIN_MOTOR_B, 255);
-    }
-
-    if (znak == 'b') {
-      // Nastavit na PIN_MOTOR_B (D11) 0 (tj. 0V) => nebude se točit
-      analogWrite(PIN_MOTOR_B, 0);
-    }
-
-    if (znak == 'C') {
-      // Vypneme oba motory
-      digitalWrite(PIN_MOTOR_A, LOW);
-      digitalWrite(PIN_MOTOR_B, LOW);
-
-      // Motor A se bude tocit po smeru hodinovych rucicek
-      digitalWrite(PIN_IN1, HIGH); 
-      digitalWrite(PIN_IN2, LOW);
-
-      // Motor B se bude tocit po smeru hodinovych rucicek
-      digitalWrite(PIN_IN3, HIGH);
-      digitalWrite(PIN_IN4, LOW);
-
-      // Protoze jsme zmenili smer otaceni motoru, zmenime i aktualni hodnotu
-      // promenne "smer".
-      smer = 0;
-    }
-
-    if (znak == 'c') {
-      // Vypneme oba motory
-      digitalWrite(PIN_MOTOR_A, LOW);
-      digitalWrite(PIN_MOTOR_B, LOW);
-
-      // Motor A se bude tocit proti smeru hodinovych rucicek
-      digitalWrite(PIN_IN1, LOW); 
-      digitalWrite(PIN_IN2, HIGH);
-
-      // Motor B se bude tocit proti smeru hodinovych rucicek
-      digitalWrite(PIN_IN3, LOW);
-      digitalWrite(PIN_IN4, HIGH);
-
-      // Protoze jsme zmenili smer otaceni motoru, zmenime i aktualni hodnotu
-      // promenne "smer".
-      smer = 1;
-    }
-
-    // V teto podmince testujeme, jaky je aktualni smer otaceni. Pokud bude "po smeru
-    // hodin", zmenime ho na "proti smeru hodin". Abychom neprisli o informaci, jakym
-    // smerem se motory otaci, musime zmenit i hodnotu promenne "smer".
-    if (znak == '@') {
-      // Zde muzeme vypnout oba motory, ale neni to potreba
-      // digitalWrite(PIN_MOTOR_A, LOW);
-      // digitalWrite(PIN_MOTOR_B, LOW);
-
-      // Vsimnete si pouziti "else". Testujeme, jestli je hodnota promenne "smer" rovna
-      // 0 a pokud ano, zmenime smer otaceni motoru proti smeru hodin. Pokud je hodnota
-      // promenne "smer" cokoliv jineho (my vime, ze to muze byt jen 1), zmenime smer
-      // otaceni motoru po smeru hodin.
-
-      // Provede se v pripade, ze hodnota promenne "smer" je 0.
-      if (smer == 0) {
-
-        // Nastavime novou hodnotu do promenne "smer".
-        smer = 1;
-
-        // Motor A se bude tocit proti smeru hodinovych rucicek
-        digitalWrite(PIN_IN1, LOW); 
-        digitalWrite(PIN_IN2, HIGH);
-  
-        // Motor B se bude tocit proti smeru hodinovych rucicek
-        digitalWrite(PIN_IN3, LOW);
-        digitalWrite(PIN_IN4, HIGH);
-      } else {
-
-        // Nastavime novou hodnotu do promenne "smer".
-        smer = 0;
-
-        // Motor A se bude tocit po smeru hodinovych rucicek
-        digitalWrite(PIN_IN1, HIGH); 
-        digitalWrite(PIN_IN2, LOW);
-  
-        // Motor B se bude tocit po smeru hodinovych rucicek
+      Serial.println("Zpet");
+      if (!zpet) {
+        zpet = true;
+        digitalWrite(PIN_IN1, HIGH);
+        digitalWrite(PIN_IN2, LOW); 
         digitalWrite(PIN_IN3, HIGH);
         digitalWrite(PIN_IN4, LOW);
       }
-    }
 
-    if (znak == '?') {
-      if (smer == 0) {
-        Serial.println("Motory jsou nastavene na otaceni PO smeru hodin");
+      analogWrite(PIN_MOTOR_A, 50);
+      analogWrite(PIN_MOTOR_B, 50);
+    } else
+
+    if (znak == 'S') {
+      Serial.println("Stop");
+      if (zpet) {
+        zpet = false;
+        digitalWrite(PIN_IN1, LOW); 
+        digitalWrite(PIN_IN2, HIGH);
+        digitalWrite(PIN_IN3, LOW);
+        digitalWrite(PIN_IN4, HIGH);
       }
-      if (smer == 1) {
-        Serial.println("Motory jsou nastavene na otaceni PROTI smeru hodin");
-      }
+
+      analogWrite(PIN_MOTOR_A, 0);
+      analogWrite(PIN_MOTOR_B, 0);
     }
   }
 
-  // Zpracovani jednoho znaku trva par milisekund. My dobu zpracovani zvysime
-  // o 100 milisekund. Pokud posleme po seriove lince slovo "Aqqqqqqqqqa", tak se
-  // levy motor zapne na 1 vterinu (9 znaku q nas program ignoruje, ale po kazdem
-  // precteni ceka prave tech 100ms).
-  // delay(100);
-  delay(10);
+  delay(5);
 }
